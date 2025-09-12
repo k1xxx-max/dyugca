@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mines Game</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: manipulation;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: rgba(15, 20, 35, 0.85);
+            padding: 25px;
+            border-radius: 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            transform: rotate(30deg);
+            pointer-events: none;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .balance {
+            font-size: 22px;
+            color: #ffd700;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 12px 20px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .balance i {
+            color: #ffd700;
+        }
+        
+        .multipliers-container {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin: 15px 0 20px 0;
+            justify-content: flex-start;
+            position: relative;
+            z-index: 1;
+            height: 55px;
+            user-select: none;
+            scrollbar-width: none;
+        }
+        
+        .multipliers-container::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .multiplier-item {
+            min-width: 65px;
+            height: 35px;
+            background: linear-gradient(145deg, #2ecc71, #27ae60);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .multiplier-item.passed {
+            background: linear-gradient(145deg, #7f8c8d, #636e72);
+        }
+        
+        .multiplier-item.current {
+            background: linear-gradient(145deg, #f39c12, #e67e22);
+            box-shadow: 0 0 15px rgba(243, 156, 18, 0.6);
+            transform: scale(1.15);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin: 20px auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .cell {
+            aspect-ratio: 1;
+            background: linear-gradient(145deg, #2c3e50, #1a2536);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cell::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .cell:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.4);
+        }
+        
+        .cell:active {
+            transform: scale(0.95);
+        }
+        
+        .cell.revealed {
+            background: linear-gradient(145deg, #27ae60, #219653);
+            cursor: default;
+            transform: scale(0.95);
+        }
+        
+        .cell.mine {
+            background: linear-gradient(145deg, #e74c3c, #c0392b);
+            animation: explode 0.6s ease-out;
+        }
+        
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 20px 0;
+            gap: 15px;
+            position: relative;
+            z-index: 1;
+            min-height: 55px;
+        }
+        
+        .mines-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px 18px;
+            border-radius: 12px;
+            width: 100%;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .mines-btn {
+            width: 38px;
+            height: 38px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(145deg, #e74c3c, #c0392b);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .mines-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .mines-count {
+            font-size: 22px;
+            font-weight: bold;
+            min-width: 35px;
+            text-align: center;
+            color: #ffd700;
+        }
+        
+        .random-btn {
+            background: linear-gradient(145deg, #9b59b6, #8e44ad);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            width: 100%;
+            opacity: 0;
+            position: absolute;
+            pointer-events: none;
+        }
+        
+        .random-btn.active {
+            opacity: 1;
+            pointer-events: auto;
+            position: relative;
+        }
+        
+        .random-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .control-panel {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .bet-input-container {
+            position: relative;
+        }
+        
+        .bet-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #3498db;
+            border-radius: 12px;
+            padding: 16px 16px 16px 45px;
+            font-size: 18px;
+            color: white;
+            text-align: center;
+            width: 100%;
+            transition: all 0.3s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .bet-input:focus {
+            outline: none;
+            border-color: #2ecc71;
+            box-shadow: 0 0 15px rgba(46, 204, 113, 0.4);
+        }
+        
+        .currency-symbol {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #ffd700;
+            font-weight: bold;
+            font-size: 20px;
+        }
+        
+        .action-btn {
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 60px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .play-btn {
+            background: linear-gradient(145deg, #2ecc71, #27ae60);
+            color: white;
+        }
+        
+        .play-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .cashout-btn {
+            background: linear-gradient(145deg, #f39c12, #e67e22);
+            color: white;
+            font-size: 16px;
+            line-height: 1.2;
+            padding: 12px 8px;
+            min-height: 60px;
+        }
+        
+        .cashout-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .cashout-amount {
+            font-size: 14px;
+            margin-top: 3px;
+            font-weight: normal;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .status.win {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+            animation: pulse 1.5s infinite;
+            border: 1px solid rgba(46, 204, 113, 0.3);
+        }
+        
+        .status.lose {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+        
+        .status.info {
+            background: rgba(52, 152, 219, 0.2);
+            color: #3498db;
+            border: 1px solid rgba(52, 152, 219, 0.3);
+        }
+        
+        @keyframes explode {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }
+            50% { transform: scale(1.02); box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3); }
+            100% { transform: scale(1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); }
+        }
+        
+        .history-panel {
+            margin-top: 20px;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 12px;
+            max-height: 140px;
+            overflow-y: auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .history-title {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #ccc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+        }
+        
+        .history-items {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .history-item {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .history-win {
+            background: rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+        }
+        
+        .history-lose {
+            background: rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+        }
+        
+        .win-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .win-confetti {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: #ffd700;
+            opacity: 0;
+        }
+        
+        .win-text {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+            opacity: 0;
+            transform: scale(0);
+            animation: winTextAnimation 2s forwards;
+        }
+        
+        @keyframes winTextAnimation {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px 15px;
+                border-radius: 15px;
+            }
+            
+            .balance {
+                font-size: 18px;
+                padding: 10px 15px;
+            }
+            
+            .game-board {
+                gap: 8px;
+            }
+            
+            .cell {
+                font-size: 20px;
+            }
+            
+            .controls-row {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .mines-selector, .random-btn {
+                width: 100%;
+            }
+            
+            .control-panel {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .status {
+                font-size: 16px;
+                padding: 15px;
+            }
+            
+            .win-text {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="balance">
+                <i class="fas fa-coins"></i>
+                Баланс: <span id="balance">0</span> $
+            </div>
+        </div>
+        
+        <div class="multipliers-container" id="multipliersList">
+            <!-- Коэффициенты будут добавлены через JavaScript -->
+        </div>
+        
+        <div class="game-board" id="gameBoard">
+            <!-- Клетки будут созданы автоматически -->
+        </div>
+        
+        <div class="controls-row">
+            <div class="mines-selector" id="minesSelector">
+                <button class="mines-btn" onclick="changeMines(-1)">-</button>
+                <span class="mines-count" id="minesCount">2</span>
+                <button class="mines-btn" onclick="changeMines(1)">+</button>
+            </div>
+            
+            <button class="random-btn" id="randomBtn" onclick="makeRandomMove()">
+                <i class="fas fa-dice"></i> Рандом
+            </button>
+        </div>
+        
+        <div class="control-panel">
+            <div class="bet-input-container">
+                <span class="currency-symbol">$</span>
+                <input 
+                    type="number" 
+                    class="bet-input" 
+                    id="betAmount" 
+                    value="0.10" 
+                    min="0.10" 
+                    max="1000" 
+                    step="0.10"
+                    onchange="updateBet()"
+                    placeholder="Ставка"
+                >
+            </div>
+            
+            <button class="action-btn play-btn" id="playBtn" onclick="toggleGame()">
+                <span id="btnText">Играть</span>
+                <span id="btnAmount" class="cashout-amount"></span>
+            </button>
+        </div>
+        
+        <div class="status info" id="gameStatus">Загрузка...</div>
+        
+        <div class="history-panel">
+            <div class="history-title">
+                <i class="fas fa-history"></i> История игр
+            </div>
+            <div class="history-items" id="historyItems">
+                <!-- История будет добавляться здесь -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Упрощенная версия без сервера для тестирования
+        const tg = window.Telegram.WebApp;
+        let balance = 100.00; // Начальный баланс
+        let user_id = tg.initDataUnsafe.user?.id || Math.floor(Math.random() * 1000000);
+        
+        // Коэффициенты
+        const multipliers = {
+            2: [1.02, 1.11, 1.22, 1.34, 1.48, 1.65, 1.84, 2.07, 2.35, 2.69, 3.10, 3.62, 4.27, 5.13, 6.27, 7.83, 10.07, 13.43, 18.80, 28.20, 47.00, 94.00, 282.00],
+            3: [1.07, 1.22, 1.40, 1.63, 1.90, 2.23, 2.65, 3.18, 3.86, 4.75, 5.94, 7.56, 9.83, 13.10, 18.02, 25.74, 38.61, 61.77, 108.10, 216.20, 540.50, 2162.00],
+            24: [23.50]
+        };
+
+        // Переменные игры
+        let currentBet = 0.10;
+        let minesCount = 2;
+        let gameActive = false;
+        let mines = [];
+        let revealedCells = 0;
+        let totalCells = 25;
+        let gameHistory = [];
+
+        // Элементы интерфейса
+        const balanceElement = document.getElementById('balance');
+        const minesCountElement = document.getElementById('minesCount');
+        const betAmountElement = document.getElementById('betAmount');
+        const playBtn = document.getElementById('playBtn');
+        const btnText = document.getElementById('btnText');
+        const btnAmount = document.getElementById('btnAmount');
+        const gameStatusElement = document.getElementById('gameStatus');
+        const gameBoard = document.getElementById('gameBoard');
+        const multipliersList = document.getElementById('multipliersList');
+        const randomBtn = document.getElementById('randomBtn');
+        const minesSelector = document.getElementById('minesSelector');
+        const historyItemsElement = document.getElementById('historyItems');
+
+        // Инициализация
+        function initGame() {
+            tg.expand();
+            updateBalance();
+            createMultipliersDisplay();
+            createGameBoard();
+            toggleRandomButton();
+            gameStatusElement.textContent = "Выберите ставку и нажмите 'Играть'";
+        }
+
+        // Обновление баланса
+        function updateBalance() {
+            balanceElement.textContent = balance.toFixed(2);
+        }
+
+        // Создание таблицы коэффициентов
+        function createMultipliersDisplay() {
+            multipliersList.innerHTML = '';
+            const mineMultipliers = multipliers[minesCount] || [];
+            
+            for (let i = 0; i < mineMultipliers.length; i++) {
+                const multiplier = mineMultipliers[i];
+                const multiplierItem = document.createElement('div');
+                multiplierItem.className = 'multiplier-item';
+                multiplierItem.id = `multiplier-${i}`;
+                
+                if (gameActive) {
+                    if (i < revealedCells) multiplierItem.classList.add('passed');
+                    else if (i === revealedCells) multiplierItem.classList.add('current');
+                }
+                
+                multiplierItem.textContent = 'x' + multiplier.toFixed(2);
+                multipliersList.appendChild(multiplierItem);
+            }
+        }
+
+        // Переключение между селектором мин и кнопкой рандома
+        function toggleRandomButton() {
+            if (gameActive) {
+                minesSelector.style.display = 'none';
+                randomBtn.classList.add('active');
+            } else {
+                minesSelector.style.display = 'flex';
+                randomBtn.classList.remove('active');
+            }
+        }
+
+        // Случайный ход
+        function makeRandomMove() {
+            if (!gameActive) return;
+            
+            const closedCells = [];
+            for (let i = 0; i < totalCells; i++) {
+                if (!gameBoard.children[i].classList.contains('revealed')) {
+                    closedCells.push(i);
+                }
+            }
+            
+            if (closedCells.length === 0) return;
+            
+            const randomIndex = Math.floor(Math.random() * closedCells.length);
+            const cellIndex = closedCells[randomIndex];
+            revealCell(cellIndex);
+        }
+
+        // Изменение количества мин
+        function changeMines(delta) {
+            if (gameActive) return;
+            
+            minesCount = Math.max(2, Math.min(24, minesCount + delta));
+            minesCountElement.textContent = minesCount;
+            createMultipliersDisplay();
+            calculateNextWin();
+        }
+
+        // Обновление ставки
+        function updateBet() {
+            if (gameActive) return;
+            
+            currentBet = parseFloat(betAmountElement.value) || 0.10;
+            currentBet = Math.max(0.10, Math.min(balance, currentBet));
+            betAmountElement.value = currentBet.toFixed(2);
+            calculateNextWin();
+        }
+
+        // Расчет следующего выигрыша
+        function calculateNextWin() {
+            if (gameActive) {
+                const mineMultipliers = multipliers[minesCount] || [];
+                const multiplier = mineMultipliers[revealedCells] || 1.0;
+                const currentWin = currentBet * multiplier;
+                btnAmount.textContent = currentWin.toFixed(2) + '$';
+            } else {
+                btnAmount.textContent = '';
+            }
+        }
+
+        // Переключение режима игры/забрать
+        function toggleGame() {
+            if (gameActive) {
+                cashOut();
+            } else {
+                startGame();
+            }
+        }
+
+        // Начало игры
+        function startGame() {
+            if (currentBet <= 0 || balance < currentBet) {
+                gameStatusElement.textContent = '❌ Недостаточно средств!';
+                return;
+            }
+            
+            balance -= currentBet;
+            updateBalance();
+            
+            gameActive = true;
+            revealedCells = 0;
+            
+            btnText.textContent = 'Забрать';
+            playBtn.classList.remove('play-btn');
+            playBtn.classList.add('cashout-btn');
+            
+            createGameBoard();
+            createMultipliersDisplay();
+            toggleRandomButton();
+            
+            gameStatusElement.textContent = 'Игра началась! Открывайте клетки...';
+            gameStatusElement.className = 'status info';
+            
+            calculateNextWin();
+        }
+
+        // Создание игрового поля
+        function createGameBoard() {
+            gameBoard.innerHTML = '';
+            mines = [];
+            
+            for (let i = 0; i < minesCount; i++) mines.push(true);
+            for (let i = minesCount; i < totalCells; i++) mines.push(false);
+            
+            for (let i = mines.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [mines[i], mines[j]] = [mines[j], mines[i]];
+            }
+            
+            for (let i = 0; i < totalCells; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.textContent = '?';
+                cell.onclick = () => revealCell(i);
+                gameBoard.appendChild(cell);
+            }
+        }
+
+        // Открытие клетки
+        function revealCell(index) {
+            if (!gameActive) return;
+            
+            const cell = gameBoard.children[index];
+            if (cell.classList.contains('revealed')) return;
+            
+            cell.classList.add('revealed');
+            revealedCells++;
+            
+            if (mines[index]) {
+                cell.textContent = '💥';
+                cell.classList.add('mine');
+                endGame(false);
+            } else {
+                cell.textContent = '💰';
+                calculateNextWin();
+                createMultipliersDisplay();
+                if (revealedCells === (totalCells - minesCount)) endGame(true);
+            }
+        }
+
+        // Забрать деньги
+        function cashOut() {
+            if (!gameActive) return;
+            
+            const mineMultipliers = multipliers[minesCount] || [];
+            const multiplier = mineMultipliers[revealedCells] || 1.0;
+            const winAmount = currentBet * multiplier;
+            
+            balance += winAmount;
+            updateBalance();
+            
+            if (multiplier >= 2) {
+                playWinAnimation(multiplier);
+            }
+            
+            endGame(true, true, winAmount, multiplier);
+            addToHistory(true, winAmount);
+        }
+
+        // Завершение игры
+        function endGame(isWin, isCashout = false, winAmount = 0, multiplier = 1.0) {
+            gameActive = false;
+            
+            btnText.textContent = 'Играть';
+            btnAmount.textContent = '';
+            playBtn.classList.remove('cashout-btn');
+            playBtn.classList.add('play-btn');
+            
+            // Показываем все мины
+            for (let i = 0; i < totalCells; i++) {
+                if (mines[i]) {
+                    const cell = gameBoard.children[i];
+                    if (!cell.classList.contains('revealed')) {
+                        cell.textContent = '💣';
+                        cell.classList.add('mine');
+                    }
+                }
+            }
+            
+            if (isWin) {
+                gameStatusElement.textContent = isCashout ? 
+                    `🎉 Вы забрали ${winAmount.toFixed(2)}$!` : 
+                    `🎉 Вы выиграли ${winAmount.toFixed(2)}$! Все клетки открыты!`;
+                gameStatusElement.className = 'status win';
+            } else {
+                gameStatusElement.textContent = `💥 Вы проиграли ${currentBet.toFixed(2)}$!`;
+                gameStatusElement.className = 'status lose';
+                addToHistory(false, currentBet);
+            }
+            
+            toggleRandomButton();
+        }
+
+        // Добавление записи в истории
+        function addToHistory(isWin, amount) {
+            const historyItem = document.createElement('div');
+            historyItem.className = `history-item ${isWin ? 'history-win' : 'history-lose'}`;
+            historyItem.textContent = `${isWin ? '+' : '-'}$${amount.toFixed(2)}`;
+            
+            historyItemsElement.prepend(historyItem);
+            gameHistory.unshift({isWin, amount});
+            
+            if (historyItemsElement.children.length > 10) {
+                historyItemsElement.removeChild(historyItemsElement.lastChild);
+                gameHistory.pop();
+            }
+        }
+
+        // Анимация выигрыша
+        function playWinAnimation(multiplier) {
+            if (multiplier < 2) return;
+            
+            const animationContainer = document.createElement('div');
+            animationContainer.className = 'win-animation';
+            
+            const winText = document.createElement('div');
+            winText.className = 'win-text';
+            winText.textContent = `x${multiplier.toFixed(2)} ВЫИГРЫШ!`;
+            
+            animationContainer.appendChild(winText);
+            document.body.appendChild(animationContainer);
+            
+            setTimeout(() => {
+                document.body.removeChild(animationContainer);
+            }, 3000);
+        }
+
+        // Запускаем игру при загрузке
+        window.onload = initGame;
+    </script>
+</body>
+</html>
