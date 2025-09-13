@@ -591,7 +591,7 @@
     <script>
         // ===== КОНФИГУРАЦИЯ =====
         const tg = window.Telegram.WebApp;
-        let balance = 100.00;
+        let balance = 1000.00;
         let user_id = tg.initDataUnsafe.user?.id || Math.floor(Math.random() * 1000000);
         
         // Коэффициенты для всех количеств мин
@@ -644,25 +644,64 @@
         const minesSelector = document.getElementById('minesSelector');
         const historyItemsElement = document.getElementById('historyItems');
 
-        // ===== ФУНКЦИИ =====
-        
-        // Загрузка баланса при запуске
-        function loadBalance() {
-            const savedBalance = localStorage.getItem(`mines_balance_${user_id}`);
-            if (savedBalance) {
-                balance = parseFloat(savedBalance);
+        // ===== API ФУНКЦИИ =====
+        const API_BASE = 'http://localhost:5000';
+
+        async function loadBalanceFromBot() {
+            try {
+                const response = await fetch(`${API_BASE}/api/balance/${user_id}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    balance = data.balance;
+                    updateBalance();
+                    gameStatusElement.textContent = "Баланс синхронизирован! Выберите ставку";
+                }
+            } catch (error) {
+                console.log('Не могу подключиться к боту');
+                const savedBalance = localStorage.getItem(`mines_balance_${user_id}`);
+                if (savedBalance) {
+                    balance = parseFloat(savedBalance);
+                    updateBalance();
+                }
+                gameStatusElement.textContent = "Локальный режим. Баланс не синхронизирован с ботом";
             }
-            updateBalance();
-            gameStatusElement.textContent = "Выберите ставку и нажмите 'Играть'";
         }
 
-        // Обновление отображения баланса
+        async function updateBalanceInBot(amount) {
+            try {
+                const response = await fetch(`${API_BASE}/api/update-balance`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: user_id,
+                        amount: amount
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    balance = data.new_balance;
+                    updateBalance();
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.log('Не могу обновить баланс в боте');
+                balance += amount;
+                updateBalance();
+                return true;
+            }
+        }
+
+        // ===== ОСНОВНЫЕ ФУНКЦИИ =====
         function updateBalance() {
             balanceElement.textContent = balance.toFixed(2);
             localStorage.setItem(`mines_balance_${user_id}`, balance.toString());
         }
 
-        // Создание таблицы коэффициентов
         function createMultipliersDisplay() {
             multipliersList.innerHTML = '';
             const mineMultipliers = multipliers[minesCount] || [];
@@ -683,7 +722,6 @@
             }
         }
 
-        // Переключение между селектором мин и кнопкой рандома
         function toggleRandomButton() {
             if (gameActive) {
                 minesSelector.style.display = 'none';
@@ -694,7 +732,6 @@
             }
         }
 
-        // Случайный ход
         function makeRandomMove() {
             if (!gameActive) return;
             
@@ -712,7 +749,6 @@
             revealCell(cellIndex);
         }
 
-        // Изменение количества мин
         function changeMines(delta) {
             if (gameActive) return;
             
@@ -722,7 +758,6 @@
             calculateNextWin();
         }
 
-        // Обновление ставки
         function updateBet() {
             if (gameActive) return;
             
@@ -732,7 +767,6 @@
             calculateNextWin();
         }
 
-        // Расчет следующего выигрыша
         function calculateNextWin() {
             if (gameActive) {
                 const mineMultipliers = multipliers[minesCount] || [];
@@ -744,7 +778,6 @@
             }
         }
 
-        // Переключение режима игры/забрать
         function toggleGame() {
             if (gameActive) {
                 cashOut();
@@ -753,15 +786,17 @@
             }
         }
 
-        // Начало игры
-        function startGame() {
-            if (currentBet <= 0 || balance < currentBet) {
+        async function startGame() {
+            if (currentBet <= 0) {
                 gameStatusElement.textContent = '❌ Недостаточно средств!';
                 return;
             }
             
-            balance -= currentBet;
-            updateBalance();
+            const success = await updateBalanceInBot(-currentBet);
+            if (!success) {
+                gameStatusElement.textContent = '❌ Ошибка списания средств!';
+                return;
+            }
             
             gameActive = true;
             revealedCells = 0;
@@ -780,7 +815,6 @@
             calculateNextWin();
         }
 
-        // Создание игрового поля
         function createGameBoard() {
             gameBoard.innerHTML = '';
             mines = [];
@@ -802,7 +836,6 @@
             }
         }
 
-        // Открытие клетки
         function revealCell(index) {
             if (!gameActive) return;
             
@@ -824,16 +857,18 @@
             }
         }
 
-        // Забрать деньги
-        function cashOut() {
+        async function cashOut() {
             if (!gameActive) return;
             
             const mineMultipliers = multipliers[minesCount] || [];
             const multiplier = mineMultipliers[revealedCells] || 1.0;
             const winAmount = currentBet * multiplier;
             
-            balance += winAmount;
-            updateBalance();
+            const success = await updateBalanceInBot(winAmount);
+            if (!success) {
+                gameStatusElement.textContent = '❌ Ошибка зачисления выигрыша!';
+                return;
+            }
             
             if (multiplier >= 2) {
                 playWinAnimation(multiplier);
@@ -843,7 +878,6 @@
             addToHistory(true, winAmount);
         }
 
-        // Завершение игры
         function endGame(isWin, isCashout = false, winAmount = 0, multiplier = 1.0) {
             gameActive = false;
             
@@ -852,7 +886,6 @@
             playBtn.classList.remove('cashout-btn');
             playBtn.classList.add('play-btn');
             
-            // Показываем все мины
             for (let i = 0; i < totalCells; i++) {
                 if (mines[i]) {
                     const cell = gameBoard.children[i];
@@ -877,7 +910,6 @@
             toggleRandomButton();
         }
 
-        // Добавление записи в истории
         function addToHistory(isWin, amount) {
             const historyItem = document.createElement('div');
             historyItem.className = `history-item ${isWin ? 'history-win' : 'history-lose'}`;
@@ -892,7 +924,6 @@
             }
         }
 
-        // Анимация выигрыша
         function playWinAnimation(multiplier) {
             if (multiplier < 2) return;
             
@@ -911,16 +942,14 @@
             }, 3000);
         }
 
-        // Инициализация игры
         function initGame() {
             tg.expand();
-            loadBalance();
+            loadBalanceFromBot();
             createMultipliersDisplay();
             createGameBoard();
             toggleRandomButton();
         }
 
-        // Запускаем игру при загрузке
         window.onload = initGame;
     </script>
 </body>
